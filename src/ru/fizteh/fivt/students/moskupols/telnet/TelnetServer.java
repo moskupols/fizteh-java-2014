@@ -5,6 +5,9 @@ import ru.fizteh.fivt.students.moskupols.cliutils2.NameFirstCommandChooser;
 import ru.fizteh.fivt.students.moskupols.cliutils2.commands.ExitCommand;
 import ru.fizteh.fivt.students.moskupols.cliutils2.interpreters.Interpreter;
 import ru.fizteh.fivt.students.moskupols.proxy.AutoCloseableCachingTableProvider;
+import ru.fizteh.fivt.students.moskupols.telnet.commands.StreamCommandInterpreter;
+import ru.fizteh.fivt.students.moskupols.telnet.commands.TelnetContext;
+import ru.fizteh.fivt.students.moskupols.telnet.commands.streamed_table.*;
 
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -18,7 +21,6 @@ import java.util.List;
 public class TelnetServer {
     private final AutoCloseableCachingTableProvider localProvider;
     private Listener listener;
-
 
     public TelnetServer(AutoCloseableCachingTableProvider localProvider) {
         this.localProvider = localProvider;
@@ -93,7 +95,10 @@ public class TelnetServer {
                     TelnetContext.createRemoteMaster(
                             localProvider, TelnetServer.this, socket.getOutputStream());
             CommandChooser commandChooser = new NameFirstCommandChooser(
-                    new ExitCommand()
+                    new Commit(), new Create(), new Drop(),
+                    new Get(), new Put(), new Remove(),
+                    new Rollback(), new Size(), new Use(),
+                    new ShowTables(), new ExitCommand()
             );
             return new StreamCommandInterpreter(
                     socket.getInputStream(), socket.getOutputStream(),

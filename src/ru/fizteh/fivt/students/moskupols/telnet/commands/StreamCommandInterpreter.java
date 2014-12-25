@@ -1,4 +1,4 @@
-package ru.fizteh.fivt.students.moskupols.telnet;
+package ru.fizteh.fivt.students.moskupols.telnet.commands;
 
 import ru.fizteh.fivt.students.moskupols.cliutils.StopProcessingException;
 import ru.fizteh.fivt.students.moskupols.cliutils.UnknownCommandException;
@@ -17,11 +17,11 @@ import java.util.Scanner;
 public class StreamCommandInterpreter extends ShellInterpreter {
     private final Scanner inputScanner;
     private final PrintWriter errorPrinter;
-    private final Object context;
+    private final LocalContext context;
     private final CommandChooser chooser;
 
     public StreamCommandInterpreter(
-            InputStream inputStream, OutputStream errorStream, Object context, CommandChooser chooser) {
+            InputStream inputStream, OutputStream errorStream, LocalContext context, CommandChooser chooser) {
         inputScanner = new Scanner(inputStream);
         errorPrinter = new PrintWriter(errorStream);
         this.context = context;
@@ -44,6 +44,8 @@ public class StreamCommandInterpreter extends ShellInterpreter {
                 } catch (UnknownCommandException | CommandExecutionException e) {
                     errorPrinter.println(e.getMessage());
                     errorPrinter.flush();
+                } finally {
+                    context.getOutputPrinter().flush();
                 }
             }
         } while (!exitOccurred);
