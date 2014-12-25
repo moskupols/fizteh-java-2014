@@ -9,6 +9,8 @@ import ru.fizteh.fivt.students.moskupols.proxy.AutoCloseableCachingTableProvider
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.LinkedList;
+import java.util.List;
 
 /**
  * Created by moskupols on 25.12.14.
@@ -22,59 +24,100 @@ public class TelnetServer {
         this.localProvider = localProvider;
     }
 
-    void start(int port) throws IOException {
+    public void start(int port) throws IOException {
+        if (isListening()) {
+            throw new IllegalStateException("already listening");
+        }
         listener = new Listener(port);
         listener.start();
     }
 
-    void stop() {
-        try {
-            listener.serverSocket.close();
-        } catch (IOException e) {
-            //
+    public void stop() {
+        if (isListening()) {
+            listener.shutdownGracefully();
+            listener = null;
         }
     }
 
-    protected Interpreter createMasterInterpreter(Socket socket) throws IOException {
-        TelnetContext context =
-                TelnetContext.createRemoteMaster(localProvider, this, socket.getOutputStream());
-        CommandChooser commandChooser = new NameFirstCommandChooser(
-                new ExitCommand()
-        );
-        return new StreamCommandInterpreter(
-                socket.getInputStream(), socket.getOutputStream(),
-                context, commandChooser);
+    public boolean isListening() {
+        return listener != null;
     }
 
     private class Listener extends Thread {
-        public final ServerSocket serverSocket;
+        private final ServerSocket serverSocket;
+        private final List<Master> masters;
 
         public Listener(int port) throws IOException {
             serverSocket = new ServerSocket(port);
+            masters = new LinkedList<>();
         }
 
         @Override
         public void run() {
             boolean closed = false;
-            while (!closed) {
-                try {
-                    final Socket clientSocket = serverSocket.accept();
-                    final Interpreter interpreter = createMasterInterpreter(clientSocket);
-                    new Thread() {
-                        @Override
-                        public void run() {
-                            try {
-                                interpreter.interpret();
-                                clientSocket.close();
-                            } catch (Exception e) {
-                                // actually impossible
-                                e.printStackTrace();
-                            }
-                        }
-                    }.start();
-                } catch (IOException e) {
-                    closed = true;
+            try {
+                while (!closed) {
+                    try {
+                        final Socket clientSocket = serverSocket.accept();
+                        final Master master = new Master(clientSocket);
+                        masters.add(master);
+                        master.start();
+                    } catch (IOException e) {
+                        closed = true;
+                    }
                 }
+            } finally {
+                shutdownGracefully();
+            }
+        }
+
+        public synchronized void shutdownGracefully() {
+            try {
+                serverSocket.close();
+                masters.forEach(TelnetServer.Master::shutdownGracefully);
+            } catch (IOException e) {
+                // nothing to do here
+            }
+        }
+    }
+
+    private class Master extends Thread {
+        private final Socket clientSocket;
+
+        public Master(Socket clientSocket) {
+            this.clientSocket = clientSocket;
+        }
+
+        protected Interpreter createInterpreter(Socket socket) throws IOException {
+            TelnetContext context =
+                    TelnetContext.createRemoteMaster(
+                            localProvider, TelnetServer.this, socket.getOutputStream());
+            CommandChooser commandChooser = new NameFirstCommandChooser(
+                    new ExitCommand()
+            );
+            return new StreamCommandInterpreter(
+                    socket.getInputStream(), socket.getOutputStream(),
+                    context, commandChooser);
+        }
+
+        @Override
+        public void run() {
+            try {
+                final Interpreter interpreter = createInterpreter(clientSocket);
+                interpreter.interpret();
+            } catch (Exception e) {
+                // actually impossible
+                e.printStackTrace();
+            } finally {
+                shutdownGracefully();
+            }
+        }
+
+        public synchronized void shutdownGracefully() {
+            try {
+                clientSocket.close();
+            } catch (IOException e) {
+                // nothing to do here
             }
         }
     }
